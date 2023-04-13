@@ -1,2 +1,5 @@
-hello.devplugin/imgur/conf.yaml
+*.yaml
 hello.devplugin/imgur/imgs/*
+hello.devplugin/imgur/conf.go
+hello.devplugin/imgur/main.go
+hello.devplugin/imgur/imgur.exe
