@@ -19,9 +19,10 @@ const version = "0.0.1"
 
 var im imgur
 var (
-	f        *os.File
-	infoLog  *log.Logger
-	errorLog *log.Logger
+	f                *os.File
+	infoLog          *log.Logger
+	errorLog         *log.Logger
+	criticalErrorLog *log.Logger
 )
 
 type Request struct {
@@ -38,63 +39,54 @@ type imgur struct {
 	Deletehash string
 }
 
-func (i *imgur) init() {
+func (i *imgur) newBuf() {
 	i.Buf = new(bytes.Buffer)
 	i.Writer = multipart.NewWriter(i.Buf)
 }
 func logConf() {
-
-	f, err := os.OpenFile("info.log", os.O_RDWR|os.O_CREATE, 0666)
+	path, err := os.Getwd()
+	if err != nil {
+		log.Print(err)
+	}
+	f, err := os.OpenFile(path+string(os.PathSeparator)+"imgur.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	infoLog = log.New(f, "", log.Ldate|log.Ltime)
-	errorLog = log.New(f, "ERROR\t", log.Ldate|log.Ltime|log.Lshortfile)
+	infoLog = log.New(os.Stdout, "", log.Ldate|log.Ltime)
+	errorLog = log.New(f, "ERROR\t", log.Ldate|log.Ltime)
+	criticalErrorLog = log.New(f, "CRITICAL ERROR\t", log.Ldate|log.Ltime|log.Lshortfile)
 }
 
 func main() {
-
+	logConf()
+	defer f.Close()
 	if len(os.Args) <= 1 {
+		errorLog.Println("Launching the program without pointing to the image is impossible.")
+		f.Close()
 		return
 	}
 
-	logConf()
-	defer f.Close()
-
-	f, err := os.OpenFile("info.log", os.O_RDWR|os.O_CREATE, 0666)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer f.Close()
-
-	infoLog := log.New(f, "INFO\t", log.Ldate|log.Ltime)
 	imagePath := os.Args[1]
-
-	log.SetLevel("Debug")
-
 	image, err := os.Open(imagePath)
-
 	if err != nil {
-		log.Fatal(err)
+		errorLog.Println(err)
+		return
 	}
 	im.upload(image)
-	// url https://yandex.ru/images/touch/search?url=***&rpt=imageview&crop=0%3B0%3B1%%3B1
-	// https://yandex.ru/images/touch/search?url=https://i.imgur.com/dPrUtO2.jpg&rpt=imageview&crop=0%3B0%3B1%%3B1
-	// https://yandex.ru/images/touch/search?url=https://i.imgur.com/qMD15cz.jpg&rpt=imageview
 	browser.OpenURL(fmt.Sprintf("https://yandex.ru/images/touch/search?url=%s&rpt=imageview", im.URL))
 	time.Sleep(time.Second * 5)
 	im.delete()
 }
 func (i *imgur) upload(image io.Reader) {
-	i.init()
+	i.newBuf()
 
 	part, _ := i.Writer.CreateFormFile("image", "dont care about name")
 	io.Copy(part, image)
 	i.Writer.Close()
 
 	req, _ := http.NewRequest("POST", "https://api.imgur.com/3/image", i.Buf)
-	req.Header.Add("Authorization", fmt.Sprintf("Client-ID %s", ClientID))
+	req.Header.Add("Authorization", fmt.Sprintf("Client-ID %s", clientID))
 	req.Header.Set("Content-Type", i.Writer.FormDataContentType())
 
 	client := &http.Client{}
@@ -109,7 +101,7 @@ func (i *imgur) upload(image io.Reader) {
 	i.URL, i.Deletehash = r.Data.Link, r.Data.Deletehash
 }
 func (i *imgur) delete() {
-	i.init()
+	i.newBuf()
 
 	err := i.Writer.Close()
 	if err != nil {
@@ -123,7 +115,7 @@ func (i *imgur) delete() {
 		fmt.Println(err)
 		return
 	}
-	req.Header.Add("Authorization", fmt.Sprintf("Client-ID %s", ClientID))
+	req.Header.Add("Authorization", fmt.Sprintf("Client-ID %s", clientID))
 	req.Header.Set("Content-Type", i.Writer.FormDataContentType())
 
 	client := &http.Client{}
